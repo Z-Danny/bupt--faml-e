@@ -1,0 +1,29 @@
+# Supabase 本地开发配置
+
+[project]
+# 项目 ID（从 Supabase Dashboard 获取）
+ref = "xumbiixfvumebxyrtueu"
+
+[api]
+# API 端口
+port = 54321
+# API 外部 URL
+external_url = "http://localhost:54321"
+
+[db]
+# 数据库端口
+port = 54322
+
+[studio]
+# Studio 端口
+port = 54323
+
+[functions]
+# Edge Functions 配置
+enabled = true
+# Functions 端口
+port = 54324
+
+[functions.gemini-chat]
+# Gemini Chat Edge Function
+verify_jwt = false

@@ -1,0 +1,55 @@
+🎉 窗口3已完成聊天后端功能
+
+✅ 产出物：
+- supabase/functions/gemini-chat/index.ts（含流式/音频/会话持久化）
+- supabase/config.toml（Edge Function 配置）
+- supabase/functions/DEPLOYMENT.md（部署指南）
+- src/services/supabaseService.ts（聊天 API：createChatSession, listChatSessions, fetchMessages, sendMessageViaEdge）
+- src/types.ts（聊天类型：ChatSession, ChatMessageDB）
+
+🧪 功能实现：
+- ✅ 会话管理：自动创建新会话或复用现有会话
+- ✅ 消息持久化：用户消息和 AI 回复均保存到数据库
+- ✅ 流式响应：使用 Server-Sent Events (SSE) 格式实时返回 AI 回复
+- ✅ 音频输入：支持音频转文本（占位实现，待集成真实转写服务）
+- ✅ 情绪检测：基于关键词的简单情绪识别
+- ✅ Persona 系统：支持三种人格（healing/rational/fun）的系统提示词
+- ✅ 错误处理：统一的错误返回格式和日志记录
+- ✅ CORS 支持：允许跨域请求
+
+📌 部署准备（已完成）：
+- ✅ Supabase CLI 已安装到项目（npm install --save-dev supabase）
+- ✅ 部署脚本已添加到 package.json
+- ✅ 快速部署指南已创建（QUICK_DEPLOY.md）
+- ✅ 详细部署文档已创建（deploy-edge-function.md）
+
+📌 部署说明（需手动执行）：
+- Edge Function 代码已完成，需要通过 Supabase CLI 或 Dashboard 部署
+- 部署前需在 Supabase Dashboard 设置环境变量：
+  * GEMINI_API_KEY
+  * SUPABASE_URL
+  * SUPABASE_SERVICE_ROLE_KEY
+- 快速部署：运行 `npm run supabase:login` → `npm run supabase:link` → `npm run supabase:deploy`
+- 详细步骤见：QUICK_DEPLOY.md 或 deploy-edge-function.md
+
+🔗 API 端点：
+- Edge Function URL: https://xumbiixfvumebxyrtueu.supabase.co/functions/v1/gemini-chat
+- 前端可通过 sendMessageViaEdge() 函数调用
+
+📝 注意事项：
+1. Edge Function 需要手动部署到 Supabase（CLI 或 Dashboard）
+2. 音频转文本功能为占位实现，需要集成真实的转写服务
+3. 流式响应使用 SSE 格式，前端需使用 ReadableStream 消费
+4. 会话 ID 在首次调用后通过响应头 X-Session-Id 返回
+5. 前端自动通过 x-user-id 请求头传递用户 ID
+
+🎯 后续步骤：
+1. 部署 Edge Function 到 Supabase
+2. 测试流式响应和会话管理
+3. 集成真实的音频转文本服务（可选）
+4. 前端集成聊天功能（Chat.tsx 页面）
+
+📚 相关文档：
+- 部署指南：supabase/functions/DEPLOYMENT.md
+- 任务文档：docs/tasks/WINDOW_3_CHAT_BACKEND.md
+- 前端服务层：src/services/supabaseService.ts

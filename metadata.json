@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Famlée",
+  "description": "Famlée - 北京邮电大学专属心理健康应用，情绪流体渐变风格，Gemini AI 驱动。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

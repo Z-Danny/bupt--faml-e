@@ -1,0 +1,288 @@
+import { createClient } from '@supabase/supabase-js';
+import { MoodType } from '../src/types';
+import { config } from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// 加载 .env.local 文件
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: join(__dirname, '..', '.env.local') });
+
+// Supabase 配置
+const supabaseUrl = process.env.VITE_SUPABASE_URL!;
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// 固定用户 ID（开发阶段使用）
+const DEMO_USER_ID = 'demo_user';
+
+// 生成随机时间戳（在指定日期范围内随机时间）
+function randomTimestamp(year: number, month: number, day: number): string {
+  const date = new Date(year, month - 1, day);
+  // 在当天 8:00 - 23:00 之间随机
+  const randomHour = Math.floor(Math.random() * 15) + 8; // 8-23时
+  const randomMinute = Math.floor(Math.random() * 60);
+  date.setHours(randomHour, randomMinute, 0);
+  return date.toISOString();
+}
+
+// 大学生日记内容 - 真实场景模拟
+const journalEntries = [
+  // 11月数据
+  {
+    date: [2025, 11, 1],
+    content: "期中考试终于结束了！感觉还行，高数应该能上80。今天和室友一起去吃了海底捞，庆祝考试结束，好开心～",
+    mood: MoodType.HAPPY,
+    images: true
+  },
+  {
+    date: [2025, 11, 3],
+    content: "数据结构作业太难了...算法题想了半天没思路。在图书馆待了一整天，眼睛都快瞎了。有点焦虑这周末能不能交。",
+    mood: MoodType.ANXIOUS,
+    images: false
+  },
+  {
+    date: [2025, 11, 5],
+    content: "今天参加了学生会面试，紧张得手心都是汗。结果居然过了！成为了宣传部的一员，终于可以做些有意义的事情了。",
+    mood: MoodType.HAPPY,
+    images: true
+  },
+  {
+    date: [2025, 11, 7],
+    content: "和妈妈视频通话，她说家里一切都好。突然有点想家，虽然在学校很充实，但还是想念妈妈做的菜。",
+    mood: MoodType.SAD,
+    images: false
+  },
+  {
+    date: [2025, 11, 9],
+    content: "室友熬夜打游戏，吵得我睡不着。明天早上还有早八，真是气死我了！沟通过好几次了，还是老样子。",
+    mood: MoodType.ANGRY,
+    images: false
+  },
+  {
+    date: [2025, 11, 12],
+    content: "今天英语课上老师表扬了我的presentation，说我的发音有进步。开心！努力没有白费～",
+    mood: MoodType.HAPPY,
+    images: false
+  },
+  {
+    date: [2025, 11, 15],
+    content: "双十一剁手了，买了好多东西。花了一个月的生活费，现在有点后悔...不过都是需要的，自我安慰一下。",
+    mood: MoodType.NEUTRAL,
+    images: true
+  },
+  {
+    date: [2025, 11, 18],
+    content: "社团活动今天去敬老院做志愿者，老人们很可爱。陪他们下棋聊天，感觉很有意义。希望下次还能去。",
+    mood: MoodType.HAPPY,
+    images: true
+  },
+  {
+    date: [2025, 11, 21],
+    content: "今天和闺蜜吵架了，因为一些小事。现在一个人在宿舍，心情很复杂。是不是我太敏感了？",
+    mood: MoodType.SAD,
+    images: false
+  },
+  {
+    date: [2025, 11, 24],
+    content: "收到了秋招的第一份面试通知！虽然是小公司，但还是很激动。要认真准备，希望能拿到offer。",
+    mood: MoodType.HAPPY,
+    images: false
+  },
+  {
+    date: [2025, 11, 26],
+    content: "今天体测800米，跑得快断了气。成绩及格了，但感觉身体状况不太好。得开始锻炼了，不能总是熬夜。",
+    mood: MoodType.ANXIOUS,
+    images: false
+  },
+  {
+    date: [2025, 11, 29],
+    content: "和室友一起包饺子，虽然形状很奇怪，但是大家一起做很开心。感受到了集体的温暖～",
+    mood: MoodType.HAPPY,
+    images: true
+  },
+  // 12月数据（截止到12月6日）
+  {
+    date: [2025, 12, 1],
+    content: "12月了！时间过得真快，这学期就要结束了。还有好多作业没写，有点慌...",
+    mood: MoodType.ANXIOUS,
+    images: false
+  },
+  {
+    date: [2025, 12, 2],
+    content: "今天参加了校园歌手大赛，虽然没进决赛，但在舞台上唱歌的感觉超棒！台下好多人给我鼓掌，很开心。",
+    mood: MoodType.HAPPY,
+    images: true
+  },
+  {
+    date: [2025, 12, 3],
+    content: "导员找我谈话，说我最近上课状态不太好。确实有点分心，期末压力太大了。要调整一下心态。",
+    mood: MoodType.NEUTRAL,
+    images: false
+  },
+  {
+    date: [2025, 12, 4],
+    content: "和暗恋的TA一起上自习，心跳好快！TA还主动问我问题，感觉有希望？也许是我多想了...",
+    mood: MoodType.HAPPY,
+    images: false
+  },
+  {
+    date: [2025, 12, 6],
+    content: "今天下雪了！北京的第一场雪，和朋友们一起打雪仗，开心得像个孩子。雪景真的很美，拍了很多照片。",
+    mood: MoodType.HAPPY,
+    images: true
+  }
+];
+
+// AI 对话数据 - 真实对话场景（非总结式）
+const aiSummaries = [
+  "看到你考试结束了还去聚餐庆祝，这种劳逸结合的方式很棒呢！记得好好休息，为接下来的学习充电～ 🍽️",
+  "算法题确实需要时间沉淀，别太着急。在图书馆泡一整天说明你很努力，休息一下再来看可能会有新思路哦！💡",
+  "恭喜你加入学生会！面试时的紧张说明你很重视这个机会，通过了说明你的实力被认可了。加油，相信你会在宣传部发光的！✨",
+  "想家是很正常的情感呢，说明你是个重感情的人。虽然想念妈妈做的菜，但在学校也要好好照顾自己呀～ 🥰",
+  "室友的作息确实会影响休息，你已经尝试沟通过了，很棒。也许可以试试戴耳塞，或者和辅导员反映一下情况？",
+  "你的英语发音进步被老师认可，这一定是你平时努力练习的结果！继续保持，说不定未来能成为翻译官呢～ 🌍",
+  "双十一购物后的小懊恼很正常啦，不过如果都是必需品，那就合理规划支出。可以做个记账计划，培养理财习惯哦！💰",
+  "去敬老院做志愿者真的很有意义！陪伴老人的同时，你也在收获人生阅历。这种公益活动能让你感受到不一样的温暖～ 🫂",
+  "朋友之间有小摩擦是很正常的，说明你们都很在意这段友情。冷静下来后好好聊聊，相信会解开的。不要太自责哦～ 🤗",
+  "第一份面试通知值得庆祝！不管公司大小，都是对你能力的认可。认真准备，把每次面试都当作学习和成长的机会！💼",
+  "体测及格就很棒了！意识到要锻炼身体是很重要的第一步，可以从每天散步20分钟开始，慢慢建立运动习惯。💪",
+  "和室友一起包饺子的温馨时光最珍贵了！形状不重要，重要的是大家一起制作的过程和分享的快乐～ 🥟",
+  "12月确实是忙碌的一个月，但也是收获的季节。把作业列个清单，一件一件来完成，你会发现没那么可怕的！📝",
+  "站在舞台上唱歌需要很大勇气呢！观众的掌声就是对你最大的肯定。没进决赛没关系，重要的是你敢于展示自己！🎤",
+  "导员关心你的学习状态说明很重视你。期末压力大是正常的，及时调整心态很重要。你已经意识到了问题，这就很好！🌱",
+  "和喜欢的人一起自习，那种小心跳的感觉真的很美好～不管是友情还是爱情，能专注学习的时光都值得珍惜。加油！❤️",
+  "北京的雪景总是特别浪漫！和朋友们在雪中玩耍的快乐时光会是很珍贵的回忆。记得保暖，别感冒了～⛄️"
+];
+
+// 模拟图片URL（随机选择一些在线图片占位）
+const mockImageUrls = [
+  'https://images.unsplash.com/photo-1507591064344-4c6ce005b128?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1519452575417-564c1401ecc0?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1536064479547-7ee40b74b807?w=300&h=300&fit=crop'
+];
+
+// 插入日记数据
+async function insertJournalData() {
+  console.log('🌱 开始插入日记数据...');
+
+  try {
+    for (let i = 0; i < journalEntries.length; i++) {
+      const entry = journalEntries[i];
+      const [year, month, day] = entry.date;
+
+      // 随机选择 1-3 张图片
+      const images = entry.images ?
+        Array.from({ length: Math.floor(Math.random() * 3) + 1 }, () =>
+          mockImageUrls[Math.floor(Math.random() * mockImageUrls.length)]
+        ) : null;
+
+      const { data, error } = await supabase
+        .from('journals')
+        .insert({
+          user_id: DEMO_USER_ID,
+          content: entry.content,
+          summary: aiSummaries[i],
+          mood: entry.mood,
+          images: images,
+          created_at: randomTimestamp(year, month, day)
+        })
+        .select();
+
+      if (error) {
+        console.error(`插入第${i + 1}条日记失败:`, error);
+      } else {
+        console.log(`✅ 第${i + 1}条日记插入成功: ${year}-${month}-${day}`);
+      }
+    }
+  } catch (error) {
+    console.error('插入数据时发生错误:', error);
+  }
+}
+
+// 插入聊天会话和消息数据
+async function insertChatData() {
+  console.log('💬 开始插入聊天数据...');
+
+  try {
+    // 创建一些聊天会话
+    const sessions = [
+      { persona: 'healing' },
+      { persona: 'rational' },
+      { persona: 'fun' }
+    ];
+
+    for (const sessionData of sessions) {
+      // 插入会话
+      const { data: session, error: sessionError } = await supabase
+        .from('chat_sessions')
+        .insert({
+          user_id: DEMO_USER_ID,
+          persona: sessionData.persona
+        })
+        .select()
+        .single();
+
+      if (sessionError) {
+        console.error('插入会话失败:', sessionError);
+        continue;
+      }
+
+      console.log(`✅ 创建${sessionData.persona}人格会话成功`);
+
+      // 为每个会话插入一些示例消息
+      const sampleMessages = [
+        {
+          role: 'user' as const,
+          content: sessionData.persona === 'healing' ? '最近压力有点大，感觉很焦虑...' :
+                   sessionData.persona === 'rational' ? '我总是担心自己做得不够好，怎么办？' :
+                   '最近什么都不想干，只想躺平，正常吗？',
+          created_at: randomTimestamp(2025, 11, Math.floor(Math.random() * 20) + 1)
+        },
+        {
+          role: 'model' as const,
+          content: sessionData.persona === 'healing' ? '亲爱的，焦虑是很正常的情绪呢。让我们一起深呼吸，慢慢来，好吗？记住你已经很努力了。🌸' :
+                   sessionData.persona === 'rational' ? '让我们理性分析一下："做得不够好"这个想法，有什么具体证据支持吗？我们来做一次思维实验。🧠' :
+                   '哈哈哈哈，只想躺平这不是很正常吗！当代大学生的标配！不过躺平之后，要不要考虑下火星之旅？🚀',
+          created_at: randomTimestamp(2025, 11, Math.floor(Math.random() * 20) + 1)
+        }
+      ];
+
+      for (const message of sampleMessages) {
+        const { error: messageError } = await supabase
+          .from('chat_messages')
+          .insert({
+            session_id: session.id,
+            role: message.role,
+            content: message.content,
+            created_at: message.created_at
+          });
+
+        if (messageError) {
+          console.error('插入消息失败:', messageError);
+        }
+      }
+
+      console.log(`✅ ${sessionData.persona}会话消息插入成功`);
+    }
+  } catch (error) {
+    console.error('插入聊天数据时发生错误:', error);
+  }
+}
+
+// 主函数
+async function main() {
+  console.log('🎯 开始生成模拟数据...');
+
+  await insertJournalData();
+  await insertChatData();
+
+  console.log('🎉 模拟数据生成完成！');
+  console.log('📝 已生成日记数据：', journalEntries.length, '条');
+  console.log('💬 已生成聊天会话：3个');
+}
+
+// 运行主函数
+main().catch(console.error);
