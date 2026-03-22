@@ -41,6 +41,7 @@ export const streamChat = async (
   sessionId?: string,
   isAudio?: boolean,
   audioData?: string,
+  images?: string[],
   onChunk?: (chunk: StreamChunk) => void
 ): Promise<void> => {
   assertEnv();
@@ -49,12 +50,15 @@ export const streamChat = async (
   if (!persona) throw new Error("persona is required");
   if (!onChunk) throw new Error("onChunk callback is required");
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/gemini-chat`, {
+  // getUserId 是异步函数，需要 await
+  const userId = await getUserId() || "demo_user";
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${supabaseAnonKey}`,
-      "x-user-id": getUserId(),
+      "x-user-id": userId,
     },
     body: JSON.stringify({
       message,
@@ -62,6 +66,7 @@ export const streamChat = async (
       sessionId,
       isAudio,
       audioData,
+      images,
     }),
   });
 
@@ -122,12 +127,14 @@ export const generateJournalSummary = async (entry: string): Promise<string> => 
   try {
     assertEnv();
 
-    const response = await fetch(`${supabaseUrl}/functions/v1/gemini-chat`, {
+    const userId = await getUserId() || "demo_user";
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${supabaseAnonKey}`,
-        "x-user-id": getUserId(),
+        "x-user-id": userId,
       },
       body: JSON.stringify({
         message: entry,

@@ -11,7 +11,7 @@ import { AdminLogin } from './pages/AdminLogin';
 import { MoodType, JournalEntry, PersonaConfig } from './types';
 import { Home, Calendar as CalendarIcon, ClipboardList, Megaphone, User } from 'lucide-react';
 import { PERSONAS } from './constants';
-import { getUserId, onAuthStateChange, refreshUserState } from './lib/supabaseClient';
+import { getUserId, onAuthStateChange, refreshUserState, isSupabaseAvailable } from './lib/supabaseClient';
 import { getCurrentUser, signOut, onAuthStateChange as onAuthChange, type User as AuthUser } from './services/authService';
 
 // 需要登录的页面列表
@@ -32,6 +32,7 @@ const App: React.FC = () => {
   // ============================================
   const [user, setUser] = useState<{ id: string; email: string; display_name?: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
 
   // ============================================
   // 用户端状态
@@ -47,6 +48,13 @@ const App: React.FC = () => {
   // ============================================
   useEffect(() => {
     const init = async () => {
+      // 检查 Supabase 是否可用
+      if (!isSupabaseAvailable()) {
+        setInitError('服务配置错误，请联系管理员');
+        setLoading(false);
+        return;
+      }
+
       // 检测是否为管理模式
       const urlParams = new URLSearchParams(window.location.search);
       const modeParam = urlParams.get('mode');
@@ -57,11 +65,18 @@ const App: React.FC = () => {
         if (token === 'authenticated') {
           setIsAdminAuthenticated(true);
         }
+        setLoading(false);
       } else {
         // 用户端：检查登录状态
-        const currentUser = await getCurrentUser();
-        setUser(currentUser);
-        setLoading(false);
+        try {
+          const currentUser = await getCurrentUser();
+          setUser(currentUser);
+        } catch (error) {
+          console.error('初始化失败:', error);
+          setInitError('初始化失败，请刷新页面重试');
+        } finally {
+          setLoading(false);
+        }
       }
     };
 
@@ -133,7 +148,7 @@ const App: React.FC = () => {
   }
 
   // ============================================
-  // 加载状态
+  // 加载状态 / 错误提示
   // ============================================
   if (loading) {
     return (
@@ -141,6 +156,26 @@ const App: React.FC = () => {
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (initError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">⚠️</span>
+          </div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">服务暂时不可用</h2>
+          <p className="text-sm text-gray-600 mb-6">{initError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors"
+          >
+            刷新页面
+          </button>
         </div>
       </div>
     );

@@ -1,6 +1,6 @@
 /**
- * Gemini Chat Edge Function
- * 处理聊天消息、会话管理、流式响应和音频输入
+ * 豆包 Chat Edge Function
+ * 处理聊天消息、会话管理、流式响应和多模态输入（文字、图片）
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -8,7 +8,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 // 环境变量
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const geminiApiKey = Deno.env.get("GEMINI_API_KEY")!;
+const doubaoApiKey = Deno.env.get("DOUBAO_API_KEY") || "fa88aa33-cd80-4501-9d67-9a6fb4852d15";
+const doubaoBaseUrl = "https://ark.cn-beijing.volces.com/api/v3";
+const doubaoModel = Deno.env.get("DOUBAO_MODEL") || "doubao-seed-2-0-lite-260215";
 
 // 创建 Supabase 客户端
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -20,6 +22,7 @@ interface ChatRequest {
   sessionId?: string;
   isAudio?: boolean;
   audioData?: string; // base64
+  images?: string[]; // 图片 URL 数组
   type?: "chat" | "summary"; // 请求类型：聊天或日记摘要
 }
 
@@ -128,92 +131,85 @@ function detectMood(text: string): string | null {
 
 // 音频转文本（占位实现）
 async function transcribeAudio(audioData: string): Promise<string> {
-  // TODO: 集成真实的音频转文本服务（如 Gemini Audio API）
-  // 目前返回占位文本
+  // TODO: 集成豆包语音识别服务
   return "[音频消息已接收，转写功能待实现]";
 }
 
 // 生成日记摘要（非流式）
 async function generateJournalSummary(content: string): Promise<string> {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+    `${doubaoBaseUrl}/chat/completions`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${doubaoApiKey}`,
       },
       body: JSON.stringify({
-        contents: [
+        model: doubaoModel,
+        messages: [
           {
             role: "user",
-            parts: [
-              {
-                text: `请将以下日记内容总结为一句温暖且富有洞察力的话，送给这位同学。关注潜在的情绪。请用中文回答，不要超过50字。日记内容: "${content}"`,
-              },
-            ],
+            content: `请将以下日记内容总结为一句温暖且富有洞察力的话，送给这位同学。关注潜在的情绪。请用中文回答，不要超过50字。\n\n日记内容: "${content}"`,
           },
         ],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 200,
-        },
+        temperature: 0.7,
+        max_tokens: 200,
       }),
     }
   );
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error("Gemini API error:", response.status, errorText);
-    throw new Error(`Gemini API error: ${response.status}`);
+    console.error("豆包 API error:", response.status, errorText);
+    throw new Error(`豆包 API error: ${response.status}`);
   }
 
   const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const text = data?.choices?.[0]?.message?.content || "";
   return text.trim() || "记录下这一刻的心情，是自我关怀的开始。";
 }
 
-// 调用 Gemini API（流式）
-async function callGeminiStream(
+// 调用豆包 API（流式）
+async function callDoubaoStream(
   systemPrompt: string,
   history: Array<{ role: string; content: string }>,
   userMessage: string
 ) {
-  // 构建 Gemini API 请求格式
-  const contents = [
-    ...history.map((msg) => ({
-      role: msg.role === "user" ? "user" : "model",
-      parts: [{ text: msg.content }],
+  // 构建消息数组（标准 OpenAI 格式）
+  const messages = [
+    { role: "system", content: systemPrompt },
+    ...history.slice(0, -1).map((msg) => ({
+      role: msg.role === "user" ? "user" : "assistant",
+      content: msg.content,
     })),
-    {
-      role: "user",
-      parts: [{ text: userMessage }],
-    },
+    { role: "user", content: userMessage },
   ];
 
+  console.log("调用豆包 API...", JSON.stringify({ model: doubaoModel, messages: messages.length }).slice(0, 200));
+
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${geminiApiKey}`,
+    `${doubaoBaseUrl}/chat/completions`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${doubaoApiKey}`,
       },
       body: JSON.stringify({
-        contents,
-        systemInstruction: {
-          parts: [{ text: systemPrompt }],
-        },
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-        },
+        model: doubaoModel,
+        messages,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 2048,
       }),
     }
   );
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error("Gemini API error:", response.status, errorText);
-    throw new Error(`Gemini API error: ${response.status}`);
+    console.error("豆包 API error:", response.status, errorText);
+    throw new Error(`豆包 API error: ${response.status}: ${errorText}`);
   }
 
   return response.body;
@@ -235,7 +231,9 @@ Deno.serve(async (req) => {
   try {
     // 解析请求体
     const body: ChatRequest = await req.json();
-    const { message, persona, sessionId, isAudio, audioData, type } = body;
+    const { message, persona, sessionId, isAudio, audioData, type, images } = body;
+
+    console.log("收到请求:", { message, persona, type });
 
     // 处理日记摘要请求（非流式）
     if (type === "summary") {
@@ -315,10 +313,10 @@ Deno.serve(async (req) => {
     // 构建系统提示词
     const systemPrompt = buildSystemPrompt(persona);
 
-    // 调用 Gemini API（流式）
-    const geminiStream = await callGeminiStream(
+    // 调用豆包 API（流式）
+    const doubaoStream = await callDoubaoStream(
       systemPrompt,
-      history.slice(0, -1), // 排除刚添加的用户消息
+      history,
       userMessageText
     );
 
@@ -327,35 +325,34 @@ Deno.serve(async (req) => {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let buffer = "";
-    let processedLength = 0; // 记录已处理的位置
 
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
         buffer += decoder.decode(chunk, { stream: true });
 
-        // Gemini streamGenerateContent 返回 JSON 数组流
-        // 格式: [{"candidates":[...]}, {"candidates":[...]}]
-        // 使用正则提取 "text":"..." 内容
-        const textRegex = /"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+        // 豆包返回 OpenAI 格式的 SSE 流
+        // 格式: data: {"choices":[{"delta":{"content":"..."}}]}
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // 保留未完成的行
 
-        // 从上次处理的位置开始搜索
-        textRegex.lastIndex = processedLength;
-        let match;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
 
-        while ((match = textRegex.exec(buffer)) !== null) {
-          // 解码转义字符
-          const content = match[1]
-            .replace(/\\n/g, "\n")
-            .replace(/\\r/g, "\r")
-            .replace(/\\t/g, "\t")
-            .replace(/\\"/g, '"')
-            .replace(/\\\\/g, "\\");
+          const dataStr = trimmed.slice(6); // 移除 "data: " 前缀
+          if (dataStr === "[DONE]") continue;
 
-          if (content) {
-            fullResponse += content;
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+          try {
+            const data = JSON.parse(dataStr);
+            const content = data?.choices?.[0]?.delta?.content;
+
+            if (content) {
+              fullResponse += content;
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+            }
+          } catch (e) {
+            // 忽略解析错误
           }
-          processedLength = textRegex.lastIndex;
         }
       },
       async flush(controller) {
@@ -371,7 +368,7 @@ Deno.serve(async (req) => {
 
     // 返回流式响应
     return new Response(
-      geminiStream!.pipeThrough(transformStream),
+      doubaoStream!.pipeThrough(transformStream),
       {
         headers: {
           "Content-Type": "text/event-stream",

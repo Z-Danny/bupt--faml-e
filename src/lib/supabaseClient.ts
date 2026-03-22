@@ -10,15 +10,21 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// 验证环境变量
+// 验证环境变量（仅在开发环境警告，生产环境降级处理）
 if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error(
-        '缺少 Supabase 环境变量。请检查 .env.local 文件中的 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY'
-    );
+    if (import.meta.env.DEV) {
+        throw new Error(
+            '缺少 Supabase 环境变量。请检查 .env.local 文件中的 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY'
+        );
+    } else {
+        console.error('缺少 Supabase 环境变量，部分功能将不可用');
+    }
 }
 
 // 创建 Supabase 客户端实例
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
 
 // 用户认证状态
 let currentUser: SupabaseUser | null = null;
@@ -84,6 +90,14 @@ export function onAuthStateChange(callback: (user: SupabaseUser | null) => void)
  * 检查用户是否已登录
  */
 export async function isLoggedIn(): Promise<boolean> {
+    if (!supabase) return false;
     const userId = await getUserId();
     return userId !== null;
+}
+
+/**
+ * 检查 Supabase 是否可用
+ */
+export function isSupabaseAvailable(): boolean {
+    return supabase !== null;
 }

@@ -104,6 +104,7 @@ export const ChatPage: React.FC<ChatProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
 
   // 会话管理状态
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -278,7 +279,7 @@ export const ChatPage: React.FC<ChatProps> = ({
   };
 
   // 发送消息（流式）
-  const handleSendMessage = async (textOverride?: string) => {
+  const handleSendMessage = async (textOverride?: string, images?: string[]) => {
     const textToSend = textOverride || inputValue;
     if (!textToSend.trim() || isLoading || isStreaming) return;
 
@@ -291,6 +292,7 @@ export const ChatPage: React.FC<ChatProps> = ({
 
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
+    setSelectedImages([]); // 清空已选图片
     setIsLoading(true);
     setIsStreaming(true);
     setPendingText('');
@@ -305,6 +307,7 @@ export const ChatPage: React.FC<ChatProps> = ({
         sessionId ?? undefined,
         false,
         undefined,
+        images || selectedImages,
         (chunk: StreamChunk) => {
           // 处理 sessionId（首次发送时后端创建会话）
           if (chunk.sessionId && !newSessionId) {
