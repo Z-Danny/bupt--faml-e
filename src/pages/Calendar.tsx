@@ -6,11 +6,12 @@ import { getJournals } from '../services/supabaseService';
 
 interface CalendarPageProps {
   setGlobalMood: (mood: MoodType) => void;
+  userId: string;
 }
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
-export const CalendarPage: React.FC<CalendarPageProps> = ({ setGlobalMood }) => {
+export const CalendarPage: React.FC<CalendarPageProps> = ({ setGlobalMood, userId }) => {
   const [displayDate, setDisplayDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -26,7 +27,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ setGlobalMood }) => 
       try {
         setIsLoading(true);
         setError(null);
+        console.log('[CalendarPage] 开始加载日记，userId:', userId);
         const data = await getJournals();
+        console.log('[CalendarPage] 加载到的日记数量:', data.length);
         setEntries(data);
       } catch (err) {
         console.error('加载日记失败:', err);
@@ -37,7 +40,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ setGlobalMood }) => 
     };
 
     loadJournals();
-  }, []);
+  }, [userId]);
 
   // --- Helpers ---
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();

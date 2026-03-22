@@ -12,16 +12,18 @@ interface HomeProps {
     setPendingChatMessage: (msg: string) => void;
     currentPersona: PersonaConfig;
     setPersona: (persona: PersonaConfig) => void;
+    user: { id: string; email: string; display_name?: string } | null;
 }
 
-export const HomePage: React.FC<HomeProps> = ({ 
-    setPage, 
-    currentMood, 
+export const HomePage: React.FC<HomeProps> = ({
+    setPage,
+    currentMood,
     setGlobalMood,
     onSaveEntry,
     setPendingChatMessage,
     currentPersona,
-    setPersona
+    setPersona,
+    user
 }) => {
   const [isJournalModalOpen, setIsJournalModalOpen] = useState(false);
   // Default to index 1 (Middle card) as per user request

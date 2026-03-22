@@ -13,6 +13,7 @@ interface ChatProps {
   clearInitialMessage?: () => void;
   currentPersona: PersonaConfig;
   setBottomNavVisible: (visible: boolean) => void;
+  userId: string;
 }
 
 type ChatMode = 'text' | 'voice';
@@ -94,7 +95,8 @@ export const ChatPage: React.FC<ChatProps> = ({
   initialMessage,
   clearInitialMessage,
   currentPersona,
-  setBottomNavVisible
+  setBottomNavVisible,
+  userId
 }) => {
   const [mode, setMode] = useState<ChatMode>('text');
   const [messages, setMessages] = useState<ChatMessage[]>([]);

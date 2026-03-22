@@ -4,7 +4,7 @@
  * 提供聊天会话和消息的管理功能
  */
 
-import { supabase, getUserId } from '../lib/supabaseClient';
+import { supabase, getUserId as getSupabaseUserId } from '../lib/supabaseClient';
 import type { JournalEntry, MoodType, ChatSession, ChatMessageDB } from '../types';
 
 /**
@@ -68,6 +68,52 @@ export const uploadImage = async (imageBase64: string): Promise<string> => {
 };
 
 /**
+ * 上传用户头像到 Supabase Storage
+ * @param imageBase64 - base64 编码的图片数据
+ * @returns 图片的公开 URL
+ */
+export const uploadAvatar = async (imageBase64: string): Promise<string> => {
+  try {
+    // 将 base64 转换为 Blob
+    const imageBlob = base64ToBlob(imageBase64, 'image/jpeg');
+
+    // 获取用户 ID
+    const userId = await getSupabaseUserId();
+    if (!userId) {
+      throw new Error('用户未登录');
+    }
+
+    // 生成文件名：使用用户 ID 文件夹 + avatar.jpg
+    // RLS 策略要求文件在用户 ID 文件夹中
+    const fileName = `${userId}/avatar.jpg`;
+
+    // 上传到 avatars bucket
+    const { data, error } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, imageBlob, {
+        contentType: 'image/jpeg',
+        cacheControl: '3600',
+        upsert: true // 覆盖已存在的文件
+      });
+
+    if (error) {
+      console.error('头像上传失败:', error);
+      throw new Error(`头像上传失败: ${error.message}`);
+    }
+
+    // 获取公开 URL
+    const { data: urlData } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(data.path);
+
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('uploadAvatar 错误:', error);
+    throw error;
+  }
+};
+
+/**
  * 上传音频到 Supabase Storage
  * @param audioBlob - 音频 Blob 对象
  * @returns 音频的公开 URL
@@ -118,8 +164,11 @@ export const saveJournal = async (entry: {
   audioBlob?: Blob;
 }): Promise<JournalEntry> => {
   try {
-    // 获取用户 ID
-    const userId = getUserId();
+    // 获取用户 ID（异步）
+    const userId = await getSupabaseUserId();
+    if (!userId) {
+      throw new Error('用户未登录');
+    }
 
     // 上传图片（如果有）
     let imageUrls: string[] = [];
@@ -175,8 +224,13 @@ export const saveJournal = async (entry: {
  */
 export const getJournals = async (): Promise<JournalEntry[]> => {
   try {
-    // 获取用户 ID
-    const userId = getUserId();
+    // 获取用户 ID（异步）
+    const userId = await getSupabaseUserId();
+    console.log('[getJournals] 当前用户ID:', userId);
+
+    if (!userId) {
+      throw new Error('用户未登录');
+    }
 
     // 查询 journals 表
     const { data, error } = await supabase
@@ -186,9 +240,11 @@ export const getJournals = async (): Promise<JournalEntry[]> => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('日记加载失败:', error);
+      console.error('[getJournals] 查询错误:', error);
       throw new Error(`日记加载失败: ${error.message}`);
     }
+
+    console.log('[getJournals] 查询结果:', data?.length || 0, '条记录');
 
     // 转换为前端格式
     return (data || []).map(item => ({
@@ -201,7 +257,7 @@ export const getJournals = async (): Promise<JournalEntry[]> => {
       audio: item.audio_url || undefined
     }));
   } catch (error) {
-    console.error('getJournals 错误:', error);
+    console.error('[getJournals] 错误:', error);
     throw error;
   }
 };
@@ -213,8 +269,11 @@ export const getJournals = async (): Promise<JournalEntry[]> => {
  */
 export const getJournalById = async (id: string): Promise<JournalEntry | null> => {
   try {
-    // 获取用户 ID
-    const userId = getUserId();
+    // 获取用户 ID（异步）
+    const userId = await getSupabaseUserId();
+    if (!userId) {
+      throw new Error('用户未登录');
+    }
 
     // 查询 journals 表
     const { data, error } = await supabase
@@ -258,7 +317,11 @@ export const getJournalById = async (id: string): Promise<JournalEntry | null> =
  */
 export const createChatSession = async (persona: string): Promise<ChatSession> => {
   try {
-    const userId = getUserId();
+    const userId = await getSupabaseUserId();
+    if (!userId) {
+      throw new Error('用户未登录');
+    }
+
     const { data, error } = await supabase
       .from('chat_sessions')
       .insert({ user_id: userId, persona })
@@ -283,7 +346,11 @@ export const createChatSession = async (persona: string): Promise<ChatSession> =
  */
 export const listChatSessions = async (): Promise<ChatSession[]> => {
   try {
-    const userId = getUserId();
+    const userId = await getSupabaseUserId();
+    if (!userId) {
+      throw new Error('用户未登录');
+    }
+
     const { data, error } = await supabase
       .from('chat_sessions')
       .select('*')
@@ -369,7 +436,10 @@ export const sendMessageViaEdge = async (payload: {
 }): Promise<ReadableStream<Uint8Array> | any> => {
   try {
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gemini-chat`;
-    const userId = getUserId();
+    const userId = await getSupabaseUserId();
+    if (!userId) {
+      throw new Error('用户未登录');
+    }
 
     const res = await fetch(url, {
       method: 'POST',
