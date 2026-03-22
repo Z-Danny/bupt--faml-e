@@ -46,9 +46,12 @@ export const streamChat = async (
 ): Promise<void> => {
   assertEnv();
 
-  if (!message) throw new Error("message is required");
+  if (!message && !images) throw new Error("message or images is required");
   if (!persona) throw new Error("persona is required");
   if (!onChunk) throw new Error("onChunk callback is required");
+
+  // 如果没有文字但有图片，使用默认消息
+  const messageToSend = message || (images && images.length > 0 ? "请描述这张图片" : "");
 
   // getUserId 是异步函数，需要 await
   const userId = await getUserId() || "demo_user";
@@ -61,7 +64,7 @@ export const streamChat = async (
       "x-user-id": userId,
     },
     body: JSON.stringify({
-      message,
+      message: messageToSend,
       persona,
       sessionId,
       isAudio,

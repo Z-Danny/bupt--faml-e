@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Mic, AlertCircle, X, ChevronRight, ArrowRight, AudioLines, Plus, MessageSquare } from 'lucide-react';
+import { Send, Mic, AlertCircle, X, ChevronRight, ArrowRight, AudioLines, Plus, MessageSquare, Image as ImageIcon, Paperclip } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { streamChat, StreamChunk } from '../services/geminiService';
-import { listChatSessions, fetchMessages } from '../services/supabaseService';
+import { listChatSessions, fetchMessages, uploadImage } from '../services/supabaseService';
 import { ChatMessage, ChatMessageDB, ChatSession, MoodType, PersonaConfig } from '../types';
 import { AnalysisModal } from '../components/AnalysisModal';
 
@@ -104,7 +104,9 @@ export const ChatPage: React.FC<ChatProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
-  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]); // 添加图片状态
+  const [isRecognizing, setIsRecognizing] = useState(false); // 语音识别状态
+  const [recognizedText, setRecognizedText] = useState(''); // 识别的文字
 
   // 会话管理状态
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -281,12 +283,31 @@ export const ChatPage: React.FC<ChatProps> = ({
   // 发送消息（流式）
   const handleSendMessage = async (textOverride?: string, images?: string[]) => {
     const textToSend = textOverride || inputValue;
-    if (!textToSend.trim() || isLoading || isStreaming) return;
+    const imagesToSend = images || selectedImages;
+
+    // 允许只发送图片或只发送文字
+    if ((!textToSend.trim() && imagesToSend.length === 0) || isLoading || isStreaming) return;
+
+    // 上传图片到 Supabase Storage
+    let uploadedImageUrls: string[] = [];
+    if (imagesToSend.length > 0) {
+      setIsLoading(true);
+      try {
+        const uploadPromises = imagesToSend.map(img => uploadImage(img));
+        uploadedImageUrls = await Promise.all(uploadPromises);
+      } catch (error) {
+        console.error('图片上传失败:', error);
+        alert('图片上传失败，请重试');
+        setIsLoading(false);
+        return;
+      }
+    }
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      text: textToSend,
+      text: textToSend || (uploadedImageUrls.length > 0 ? '' : ''),
+      images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
       timestamp: new Date()
     };
 
@@ -307,7 +328,7 @@ export const ChatPage: React.FC<ChatProps> = ({
         sessionId ?? undefined,
         false,
         undefined,
-        images || selectedImages,
+        uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
         (chunk: StreamChunk) => {
           // 处理 sessionId（首次发送时后端创建会话）
           if (chunk.sessionId && !newSessionId) {
@@ -417,46 +438,106 @@ export const ChatPage: React.FC<ChatProps> = ({
       }
   };
 
+  // Web Speech API 语音识别
+  const recognitionRef = useRef<any>(null);
+
   const startVoiceRecording = async () => {
     setPermissionError(null);
+    setRecognizedText('');
+
+    // 检查浏览器支持
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setPermissionError("您的浏览器不支持语音识别，请使用 Chrome 或 Safari");
+      return;
+    }
+
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mediaRecorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
-        const chunks: BlobPart[] = [];
+      // 创建语音识别实例
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
 
-        mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) chunks.push(e.data);
-        };
+      // 配置识别参数
+      recognition.lang = 'zh-CN';
+      recognition.continuous = false; // 识别完一句就停止
+      recognition.interimResults = true; // 返回临时结果
 
-        mediaRecorder.onstop = () => {
-            stream.getTracks().forEach(track => track.stop());
-            // 音频功能暂未实现，显示提示消息
-            setMessages(prev => [...prev, {
-              id: Date.now().toString(),
-              role: 'model',
-              text: "语音功能正在开发中，请先使用文字聊天哦~",
-              timestamp: new Date()
-            }]);
-        };
-
-        mediaRecorder.start();
+      // 识别开始
+      recognition.onstart = () => {
         setIsRecording(true);
-    } catch (err: any) {
-        console.error("Error accessing microphone:", err);
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            setPermissionError("请允许麦克风权限以使用语音模式");
-        } else {
-            setPermissionError("无法访问麦克风");
+        setIsRecognizing(true);
+      };
+
+      // 识别结果（临时结果）
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
         }
+
+        // 显示识别中的文字
+        if (interimTranscript) {
+          setRecognizedText(finalTranscript || interimTranscript);
+        }
+
+        // 识别完成，发送消息
+        if (finalTranscript) {
+          setInputValue(finalTranscript);
+          setRecognizedText('');
+          setIsRecording(false);
+          setIsRecognizing(false);
+          setMode('text');
+        }
+      };
+
+      // 识别错误
+      recognition.onerror = (event: any) => {
+        console.error("语音识别错误:", event.error);
+        setIsRecording(false);
+        setIsRecognizing(false);
+
+        if (event.error === 'not-allowed') {
+          setPermissionError("请允许麦克风权限以使用语音模式");
+        } else if (event.error === 'no-speech') {
+          setPermissionError("没有检测到语音，请重试");
+        } else if (event.error === 'network') {
+          setPermissionError("网络连接失败，请检查网络");
+        } else {
+          setPermissionError(`语音识别失败: ${event.error}`);
+        }
+      };
+
+      // 识别结束
+      recognition.onend = () => {
+        setIsRecording(false);
+        setIsRecognizing(false);
+      };
+
+      // 开始识别
+      recognition.start();
+
+    } catch (err: any) {
+      console.error("Error starting speech recognition:", err);
+      setPermissionError("启动语音识别失败");
+      setIsRecording(false);
+      setIsRecognizing(false);
     }
   };
 
   const stopVoiceRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-        mediaRecorderRef.current.stop();
-        setIsRecording(false);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
     }
+    setIsRecording(false);
+    setIsRecognizing(false);
   };
 
   const toggleRecording = () => {
@@ -615,9 +696,25 @@ export const ChatPage: React.FC<ChatProps> = ({
                                     : 'bg-white/60 text-gray-900 rounded-bl-none border border-white/60'}
                                 ${msg.isTools ? 'bg-indigo-50/50 border-indigo-100/50 text-indigo-800' : ''}
                             `}>
-                                <div className="prose prose-sm max-w-none [&_p]:mb-4 [&_p]:last:mb-0 prose-headings:mt-4 prose-headings:mb-2 [&_strong]:block [&_strong]:mt-4 [&_strong]:mb-1 [&_strong]:font-bold prose-ul:my-3 prose-ol:my-3 prose-li:my-0.5">
-                                    <ReactMarkdown>{msg.text}</ReactMarkdown>
-                                </div>
+                                {/* 显示图片 */}
+                                {msg.images && msg.images.length > 0 && (
+                                    <div className="flex gap-2 mb-2 flex-wrap">
+                                        {msg.images.map((imgUrl, idx) => (
+                                            <img
+                                                key={idx}
+                                                src={imgUrl}
+                                                alt="uploaded"
+                                                className="max-w-[200px] max-h-[200px] rounded-lg object-cover"
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                                {/* 显示文字 */}
+                                {msg.text && (
+                                    <div className="prose prose-sm max-w-none [&_p]:mb-4 [&_p]:last:mb-0 prose-headings:mt-4 prose-headings:mb-2 [&_strong]:block [&_strong]:mt-4 [&_strong]:mb-1 [&_strong]:font-bold prose-ul:my-3 prose-ol:my-3 prose-li:my-0.5">
+                                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -664,47 +761,90 @@ export const ChatPage: React.FC<ChatProps> = ({
                     ))}
                 </div>
 
+                {/* 图片预览区域 */}
+                {selectedImages.length > 0 && (
+                    <div className="mb-2 flex gap-2 flex-wrap">
+                        {selectedImages.map((img, index) => (
+                            <div key={index} className="relative w-16 h-16 rounded-lg overflow-hidden bg-white/40 border border-white/50">
+                                <img src={img} alt="preview" className="w-full h-full object-cover" />
+                                <button
+                                    onClick={() => setSelectedImages(prev => prev.filter((_, i) => i !== index))}
+                                    className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-400 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-xs"
+                                >
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 <div className="relative mt-auto shrink-0 mb-6">
                     <input
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && inputValue.trim() && handleSendMessage()}
+                        onKeyDown={(e) => e.key === 'Enter' && inputValue.trim() && handleSendMessage(undefined, selectedImages)}
                         placeholder="想聊点什么..."
-                        className="w-full glass-panel rounded-full py-3.5 pl-5 pr-12 text-sm text-gray-700 placeholder-gray-500/70 focus:outline-none focus:bg-white/40 transition-all font-light shadow-sm"
+                        className="w-full glass-panel rounded-full py-3.5 pl-5 pr-24 text-sm text-gray-700 placeholder-gray-500/70 focus:outline-none focus:bg-white/40 transition-all font-light shadow-sm"
                     />
-                    <button 
-                        onClick={() => {
-                            if (inputValue.trim()) {
-                                handleSendMessage();
-                            } else {
-                                setMode('voice');
-                            }
-                        }}
-                        className="absolute right-1.5 top-1.5 bottom-1.5 w-10 flex items-center justify-center bg-white/50 hover:bg-white/80 rounded-full transition-all text-gray-700"
-                    >
-                        {inputValue.trim() ? (
-                            <Send size={18} strokeWidth={1.5} className="ml-0.5" />
-                        ) : (
-                            <AudioLines size={20} strokeWidth={1.5} />
-                        )}
-                    </button>
+                    <div className="absolute right-1.5 top-1.5 bottom-1.5 flex items-center gap-1">
+                        {/* 图片上传按钮 */}
+                        <label className="w-9 h-9 flex items-center justify-center bg-white/40 hover:bg-white/60 rounded-full transition-all text-gray-600 cursor-pointer">
+                            <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={async (e) => {
+                                    const files = Array.from(e.target.files || []);
+                                    for (const file of files) {
+                                        const reader = new FileReader();
+                                        reader.onload = (ev) => {
+                                            const base64 = ev.target?.result as string;
+                                            if (base64) {
+                                                setSelectedImages(prev => [...prev, base64]);
+                                            }
+                                        };
+                                        reader.readAsDataURL(file);
+                                    }
+                                }}
+                            />
+                            <ImageIcon size={18} strokeWidth={1.5} />
+                        </label>
+                        {/* 发送按钮 */}
+                        <button
+                            onClick={() => {
+                                if (inputValue.trim() || selectedImages.length > 0) {
+                                    handleSendMessage(undefined, selectedImages);
+                                } else {
+                                    setMode('voice');
+                                }
+                            }}
+                            className="w-9 h-9 flex items-center justify-center bg-white/50 hover:bg-white/80 rounded-full transition-all text-gray-700"
+                        >
+                            {inputValue.trim() || selectedImages.length > 0 ? (
+                                <Send size={18} strokeWidth={1.5} className="ml-0.5" />
+                            ) : (
+                                <AudioLines size={20} strokeWidth={1.5} />
+                            )}
+                        </button>
+                    </div>
                 </div>
               </>
           ) : (
               // Voice Mode: Cotton Candy Sphere
               <div className="flex-1 flex flex-col items-center justify-center relative pb-10">
-                  {/* Latest Bot Response Overlay */}
-                  {messages.length > 0 && messages[messages.length - 1].role === 'model' && (
+                  {/* 识别中的文字显示 */}
+                  {(recognizedText || isRecognizing) && (
                       <div className="absolute top-0 left-4 right-4 text-center z-20">
-                          <div className="inline-block bg-white/40 backdrop-blur-md p-4 rounded-2xl text-sm font-light text-gray-800 shadow-sm border border-white/30 animate-fade-in-up">
-                              {messages[messages.length - 1].text}
+                          <div className="inline-block bg-white/60 backdrop-blur-md px-6 py-3 rounded-2xl text-sm font-medium text-gray-800 shadow-md border border-white/40">
+                              {recognizedText || '正在聆听...'}
                           </div>
                       </div>
                   )}
 
                   {/* The Sphere */}
-                  <button 
+                  <button
                       onClick={toggleRecording}
                       disabled={isLoading}
                       className={`
@@ -717,7 +857,7 @@ export const ChatPage: React.FC<ChatProps> = ({
                       {/* Breathing Effect Layers */}
                       <div className={`absolute inset-0 rounded-full bg-white opacity-30 blur-xl ${isRecording ? 'animate-ping-slow' : 'animate-pulse'}`}></div>
                       <div className="absolute inset-2 rounded-full bg-gradient-to-tl from-white/40 to-transparent"></div>
-                      
+
                       {/* Icon / Status */}
                       <div className="relative z-10 text-gray-600/50">
                           {isLoading ? (
@@ -727,17 +867,32 @@ export const ChatPage: React.FC<ChatProps> = ({
                           )}
                       </div>
                   </button>
-                  
+
                   <p className="mt-8 text-sm font-light text-gray-500 tracking-widest uppercase">
-                      {isRecording ? 'Listening...' : 'Tap to Speak'}
+                      {isRecognizing ? '正在识别...' : isRecording ? 'Listening...' : 'Tap to Speak'}
                   </p>
 
+                  {/* 权限错误提示 */}
+                  {permissionError && (
+                      <div className="absolute bottom-24 left-4 right-4 bg-red-400/90 backdrop-blur-md text-white px-4 py-2 rounded-xl text-sm text-center">
+                          <div className="flex items-center justify-center gap-2">
+                              <AlertCircle size={16} />
+                              {permissionError}
+                          </div>
+                      </div>
+                  )}
+
                   {/* Close Voice Mode Button */}
-                  <button 
-                    onClick={() => setMode('text')}
-                    className="absolute bottom-10 left-1/2 transform -translate-x-1/2 p-4 bg-white/40 hover:bg-white/60 backdrop-blur-md rounded-full text-gray-600 transition-all border border-white/40 shadow-sm active:scale-95"
+                  <button
+                      onClick={() => {
+                          setMode('text');
+                          stopVoiceRecording();
+                          setPermissionError(null);
+                          setRecognizedText('');
+                      }}
+                      className="absolute bottom-10 left-1/2 transform -translate-x-1/2 p-4 bg-white/40 hover:bg-white/60 backdrop-blur-md rounded-full text-gray-600 transition-all border border-white/40 shadow-sm active:scale-95"
                   >
-                    <X size={24} strokeWidth={1.5} />
+                      <X size={24} strokeWidth={1.5} />
                   </button>
               </div>
           )}

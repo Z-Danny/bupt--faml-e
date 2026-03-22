@@ -19,6 +19,7 @@ export interface ChatMessage {
   text: string;
   timestamp: Date;
   isTools?: boolean;
+  images?: string[]; // 图片 URL 数组
 }
 
 // 数据库聊天会话类型

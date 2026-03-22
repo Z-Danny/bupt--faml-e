@@ -53,9 +53,19 @@ const PERSONA_PROMPTS: Record<string, string> = {
 
 // 创建新会话
 async function createSession(userId: string, persona: string) {
+  // 验证 userId 是否为有效 UUID，如果不是则生成一个
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  let validUserId = userId;
+
+  if (!uuidPattern.test(userId)) {
+    // 生成符合 UUID v4 格式的 ID
+    const uuid = crypto.randomUUID();
+    validUserId = uuid;
+  }
+
   const { data, error } = await supabase
     .from("chat_sessions")
-    .insert({ user_id: userId, persona })
+    .insert({ user_id: validUserId, persona })
     .select("id")
     .single();
 
@@ -170,23 +180,75 @@ async function generateJournalSummary(content: string): Promise<string> {
   return text.trim() || "记录下这一刻的心情，是自我关怀的开始。";
 }
 
-// 调用豆包 API（流式）
+// 调用豆包 API（流式，支持图片）
 async function callDoubaoStream(
   systemPrompt: string,
   history: Array<{ role: string; content: string }>,
-  userMessage: string
+  userMessage: string,
+  images?: string[]
 ) {
-  // 构建消息数组（标准 OpenAI 格式）
+  // 构建消息内容
+  let userContent: string | Array<{ type: string; text?: string; image_url?: { url: string } }> = userMessage;
+
+  // 如果有图片，构建多模态内容
+  if (images && images.length > 0) {
+    // 为每个图片生成 signed URL（有效期 1 小时）
+    const imagePromises = images.map(async (imageUrl) => {
+      try {
+        // 从 URL 中提取文件路径
+        // 格式: https://xxx.supabase.co/storage/v1/object/public/journal-images/filename.jpg
+        const urlObj = new URL(imageUrl);
+        const pathParts = urlObj.pathname.split('/storage/v1/object/public/');
+        if (pathParts.length > 1) {
+          const bucketAndPath = pathParts[1].split('/');
+          const bucket = bucketAndPath[0];
+          const filePath = bucketAndPath.slice(1).join('/');
+
+          // 生成 signed URL
+          const { data, error } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(filePath, 3600); // 1小时有效期
+
+          if (error) {
+            console.error("生成 signed URL 失败:", error);
+            return imageUrl; // 失败时返回原 URL
+          }
+          return data.signedUrl;
+        }
+        return imageUrl;
+      } catch (e) {
+        console.error("处理图片 URL 失败:", e);
+        return imageUrl;
+      }
+    });
+
+    const processedImages = await Promise.all(imagePromises);
+    console.log("处理后的图片 URLs:", processedImages);
+
+    userContent = [
+      { type: "text", text: userMessage },
+      ...processedImages.map(url => ({ type: "image_url", image_url: { url } }))
+    ];
+  }
+
+  // 构建消息数组
   const messages = [
     { role: "system", content: systemPrompt },
     ...history.slice(0, -1).map((msg) => ({
       role: msg.role === "user" ? "user" : "assistant",
       content: msg.content,
     })),
-    { role: "user", content: userMessage },
+    { role: "user", content: userContent },
   ];
 
-  console.log("调用豆包 API...", JSON.stringify({ model: doubaoModel, messages: messages.length }).slice(0, 200));
+  console.log("调用豆包 API...", JSON.stringify({
+    model: doubaoModel,
+    messageCount: messages.length,
+    hasImages: !!images,
+    imageCount: images?.length || 0,
+    userMessageLength: userMessage.length,
+    imageUrls: images || []
+  }));
 
   const response = await fetch(
     `${doubaoBaseUrl}/chat/completions`,
@@ -263,9 +325,20 @@ Deno.serve(async (req) => {
     }
 
     // 验证必需字段（聊天模式）
-    if (!message || !persona) {
+    if (!persona) {
       return new Response(
-        JSON.stringify({ error: "缺少必需字段：message 和 persona" }),
+        JSON.stringify({ error: "缺少必需字段：persona" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // 如果没有文字也没有图片，返回错误
+    if (!message && (!images || images.length === 0)) {
+      return new Response(
+        JSON.stringify({ error: "缺少必需字段：message 或 images" }),
         {
           status: 400,
           headers: { "Content-Type": "application/json" },
@@ -317,7 +390,8 @@ Deno.serve(async (req) => {
     const doubaoStream = await callDoubaoStream(
       systemPrompt,
       history,
-      userMessageText
+      userMessageText,
+      images
     );
 
     // 创建转换流，用于累积完整回复
