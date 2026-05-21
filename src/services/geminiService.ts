@@ -1,7 +1,4 @@
-import { getUserId } from '../lib/supabaseClient';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+import { apiUrl, getAuthToken } from '../lib/apiClient';
 
 export interface StreamChunk {
   text: string;
@@ -9,29 +6,21 @@ export interface StreamChunk {
   sessionId?: string;
 }
 
-const assertEnv = () => {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Supabase Edge Function credentials are missing.");
-  }
-};
-
 const parseChunkLine = (
   line: string
 ): { text: string; done: boolean; sessionId?: string } => {
   try {
-    // 处理 SSE 格式：移除 "data: " 前缀
-    const jsonStr = line.startsWith("data: ") ? line.slice(6) : line;
-    if (!jsonStr.trim()) return { text: "", done: false };
+    const jsonStr = line.startsWith('data: ') ? line.slice(6) : line;
+    if (!jsonStr.trim() || jsonStr.trim() === '[DONE]') return { text: '', done: true };
 
     const parsed = JSON.parse(jsonStr);
     return {
-      // Edge Function 返回 content 字段，映射到 text
-      text: parsed?.content ?? parsed?.text ?? "",
+      text: parsed?.content ?? parsed?.text ?? '',
       done: Boolean(parsed?.done),
       sessionId: parsed?.sessionId,
     };
   } catch {
-    return { text: "", done: false };
+    return { text: '', done: false };
   }
 };
 
@@ -44,27 +33,19 @@ export const streamChat = async (
   images?: string[],
   onChunk?: (chunk: StreamChunk) => void
 ): Promise<void> => {
-  assertEnv();
+  if (!message && (!images || images.length === 0)) throw new Error('message or images is required');
+  if (!persona) throw new Error('persona is required');
+  if (!onChunk) throw new Error('onChunk callback is required');
 
-  if (!message && !images) throw new Error("message or images is required");
-  if (!persona) throw new Error("persona is required");
-  if (!onChunk) throw new Error("onChunk callback is required");
-
-  // 如果没有文字但有图片，使用默认消息
-  const messageToSend = message || (images && images.length > 0 ? "请描述这张图片" : "");
-
-  // getUserId 是异步函数，需要 await
-  const userId = await getUserId() || "demo_user";
-
-  const response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
-    method: "POST",
+  const token = getAuthToken();
+  const response = await fetch(apiUrl('/ai/chat'), {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${supabaseAnonKey}`,
-      "x-user-id": userId,
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
-      message: messageToSend,
+      message: message || (images && images.length > 0 ? '请描述这张图片' : ''),
       persona,
       sessionId,
       isAudio,
@@ -74,15 +55,15 @@ export const streamChat = async (
   });
 
   if (!response.ok || !response.body) {
-    const errorText = await response.text().catch(() => "Unable to read body");
-    throw new Error(`Edge Function request failed: ${errorText}`);
+    const errorText = await response.text().catch(() => 'Unable to read body');
+    throw new Error(`AI request failed: ${errorText}`);
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  const headerSessionId = response.headers.get("X-Session-Id") || undefined;
+  const headerSessionId = response.headers.get('X-Session-Id') || undefined;
   let resolvedSessionId = headerSessionId || sessionId;
-  let buffer = "";
+  let buffer = '';
   let finished = false;
 
   const emit = (text: string, done: boolean, chunkSessionId?: string) => {
@@ -101,18 +82,16 @@ export const streamChat = async (
     const trimmed = line.trim();
     if (!trimmed) return;
     const { text, done, sessionId: chunkSessionId } = parseChunkLine(trimmed);
-    if (text || done) {
-      emit(text, done, chunkSessionId);
-    }
+    if (text || done) emit(text, done, chunkSessionId);
   };
 
   while (true) {
     const { value, done } = await reader.read();
-    const decoded = value ? decoder.decode(value, { stream: !done }) : "";
+    const decoded = value ? decoder.decode(value, { stream: !done }) : '';
     buffer += decoded;
 
     let newlineIndex: number;
-    while ((newlineIndex = buffer.indexOf("\n")) > -1) {
+    while ((newlineIndex = buffer.indexOf('\n')) > -1) {
       const line = buffer.slice(0, newlineIndex);
       buffer = buffer.slice(newlineIndex + 1);
       flushLine(line);
@@ -120,7 +99,7 @@ export const streamChat = async (
 
     if (done) {
       if (buffer.trim()) flushLine(buffer);
-      if (!finished) emit("", true);
+      if (!finished) emit('', true);
       break;
     }
   }
@@ -128,32 +107,25 @@ export const streamChat = async (
 
 export const generateJournalSummary = async (entry: string): Promise<string> => {
   try {
-    assertEnv();
-
-    const userId = await getUserId() || "demo_user";
-
-    const response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
-      method: "POST",
+    const token = getAuthToken();
+    const response = await fetch(apiUrl('/ai/summary'), {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${supabaseAnonKey}`,
-        "x-user-id": userId,
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({
-        message: entry,
-        type: "summary",
-      }),
+      body: JSON.stringify({ content: entry }),
     });
 
     if (!response.ok) {
-      throw new Error(`Edge Function error: ${response.status}`);
+      throw new Error(`AI summary failed: ${response.status}`);
     }
 
     const data = await response.json();
-    return data.summary || "暂时无法生成总结。";
+    return data.summary || '记录下这一刻的心情，是自我关怀的开始。';
   } catch (error) {
-    console.error("Error generating summary:", error);
-    return "暂时无法连接到 AI。";
+    console.error('Error generating summary:', error);
+    return '暂时无法连接到 AI。';
   }
 };
 
@@ -162,10 +134,9 @@ export const blobToB64 = (blob: Blob): Promise<string> =>
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64data = reader.result as string;
-      const base64Content = base64data.split(",")[1];
+      const base64Content = base64data.split(',')[1];
       resolve(base64Content);
     };
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
-

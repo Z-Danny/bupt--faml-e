@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Settings, Shield, Activity, ChevronRight, LogOut, Moon, Nfc, Mail, Lock, User as UserIcon, X, Camera, Check, Loader2 } from 'lucide-react';
 import { signIn, signUp, updateUserProfile, type User as AuthUser } from '../services/authService';
-import { uploadAvatar } from '../services/supabaseService';
+import { uploadAvatar } from '../services/backendService';
 
 interface ProfilePageProps {
   user: { id: string; email: string; display_name?: string; avatar_url?: string } | null;

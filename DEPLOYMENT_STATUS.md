@@ -56,7 +56,7 @@
 
 1. 访问：https://supabase.com/dashboard/project/xumbiixfvumebxyrtueu/settings/functions
 2. 确认以下环境变量已设置：
-   - `GEMINI_API_KEY`: AIzaSyD68fix5iD58vrBf89QT_8D3oMC-EhP5D4
+   - `GEMINI_API_KEY`: <REDACTED_GEMINI_API_KEY>
    - `SUPABASE_URL`: https://xumbiixfvumebxyrtueu.supabase.co
    - `SUPABASE_SERVICE_ROLE_KEY`: [从 Dashboard 获取]
 
@@ -71,7 +71,7 @@
 在本地测试 Gemini API：
 
 ```bash
-curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyBmXimEwLtZ8fhmZlD4J5QaWfJVL3ZVGjE" \
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=<REDACTED_GEMINI_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"contents":[{"parts":[{"text":"你好"}]}]}'
 ```

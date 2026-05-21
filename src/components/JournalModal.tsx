@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Image as ImageIcon, Check, Sparkles, Mic, Square, Trash2, AlertCircle } from 'lucide-react';
 import { MoodType, JournalEntry } from '../types';
 import { generateJournalSummary } from '../services/geminiService';
-import { saveJournal } from '../services/supabaseService';
+import { saveJournal } from '../services/backendService';
 
 interface JournalModalProps {
   isOpen: boolean;
@@ -128,7 +128,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
         summary = await generateJournalSummary(content);
       }
 
-      // 调用 Supabase API 保存日记
+      // 调用自托管 API 保存日记
       const savedEntry = await saveJournal({
         content,
         summary,

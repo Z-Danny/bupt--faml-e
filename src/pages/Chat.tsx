@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Mic, AlertCircle, X, ChevronRight, ArrowRight, AudioLines, Plus, MessageSquare, Image as ImageIcon, Paperclip } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { streamChat, StreamChunk } from '../services/geminiService';
-import { listChatSessions, fetchMessages, uploadImage } from '../services/supabaseService';
+import { listChatSessions, fetchMessages, uploadImage } from '../services/backendService';
 import { ChatMessage, ChatMessageDB, ChatSession, MoodType, PersonaConfig } from '../types';
 import { AnalysisModal } from '../components/AnalysisModal';
 
@@ -288,7 +288,7 @@ export const ChatPage: React.FC<ChatProps> = ({
     // 允许只发送图片或只发送文字
     if ((!textToSend.trim() && imagesToSend.length === 0) || isLoading || isStreaming) return;
 
-    // 上传图片到 Supabase Storage
+    // 上传图片到自托管 API
     let uploadedImageUrls: string[] = [];
     if (imagesToSend.length > 0) {
       setIsLoading(true);

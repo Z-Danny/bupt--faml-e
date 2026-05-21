@@ -8,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 // 环境变量
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const doubaoApiKey = Deno.env.get("DOUBAO_API_KEY") || "fa88aa33-cd80-4501-9d67-9a6fb4852d15";
+const doubaoApiKey = Deno.env.get("DOUBAO_API_KEY") || "";
 const doubaoBaseUrl = "https://ark.cn-beijing.volces.com/api/v3";
 const doubaoModel = Deno.env.get("DOUBAO_MODEL") || "doubao-seed-2-0-lite-260215";
 

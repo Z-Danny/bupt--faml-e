@@ -55,7 +55,7 @@ export interface CampusEvent {
   id: string;
   title: string;
   date: string;
-  type: '讲座' | '聚会' | '团辅' | '运动';
+  type: '讲座' | '聚会' | '团辅' | '运动' | '工坊';
   location: string;
   description: string;
   imageUrl?: string;
@@ -79,7 +79,7 @@ export interface ProfileItem {
   action?: () => void;
 }
 
-export type PersonaType = 'healing' | 'rational' | 'fun';
+export type PersonaType = 'healing' | 'rational' | 'fun' | 'coming_soon';
 
 export interface PersonaConfig {
   id: PersonaType;

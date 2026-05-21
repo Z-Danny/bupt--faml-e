@@ -11,7 +11,7 @@ import { AdminLogin } from './pages/AdminLogin';
 import { MoodType, JournalEntry, PersonaConfig } from './types';
 import { Home, Calendar as CalendarIcon, ClipboardList, Megaphone, User } from 'lucide-react';
 import { PERSONAS } from './constants';
-import { getUserId, onAuthStateChange, refreshUserState, isSupabaseAvailable } from './lib/supabaseClient';
+import { refreshUserState, isBackendAvailable } from './lib/authState';
 import { getCurrentUser, signOut, onAuthStateChange as onAuthChange, type User as AuthUser } from './services/authService';
 
 // 需要登录的页面列表
@@ -48,8 +48,8 @@ const App: React.FC = () => {
   // ============================================
   useEffect(() => {
     const init = async () => {
-      // 检查 Supabase 是否可用
-      if (!isSupabaseAvailable()) {
+      // 检查后端 API 配置是否可用
+      if (!isBackendAvailable()) {
         setInitError('服务配置错误，请联系管理员');
         setLoading(false);
         return;

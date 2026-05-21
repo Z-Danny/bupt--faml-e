@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { MoodType, JournalEntry } from '../types';
 import { ChevronLeft, ChevronRight, TrendingUp, Zap, BookOpen, Mic, Activity, Sun, CloudRain, Loader2 } from 'lucide-react';
-import { getJournals } from '../services/supabaseService';
+import { getJournals } from '../services/backendService';
 
 interface CalendarPageProps {
   setGlobalMood: (mood: MoodType) => void;
