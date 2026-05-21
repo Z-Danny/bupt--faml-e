@@ -140,6 +140,28 @@ function absoluteUrl(url) {
   return `${PUBLIC_BASE_URL.replace(/\/$/, '')}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
+function mimeForFilename(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  return 'image/jpeg';
+}
+
+async function imageInputUrl(url) {
+  if (!url || !url.startsWith('/uploads/')) return absoluteUrl(url);
+
+  const relativePath = decodeURIComponent(url.replace(/^\/uploads\//, ''));
+  const filePath = path.resolve(UPLOAD_DIR, relativePath);
+  const uploadRoot = path.resolve(UPLOAD_DIR);
+  if (!filePath.startsWith(`${uploadRoot}${path.sep}`)) {
+    throw new Error('Invalid upload path');
+  }
+
+  const buffer = await fs.readFile(filePath);
+  return `data:${mimeForFilename(filePath)};base64,${buffer.toString('base64')}`;
+}
+
 const PERSONA_PROMPTS = {
   healing: `你是 Melty，小融，一位温暖、富有同理心的大学心理支持助手。你使用 ACT 接纳承诺疗法的语言，帮助用户接纳情绪、找到可执行的小行动。请用中文回答。遇到自伤或自杀风险时，建议用户立即联系身边可信任的人、校园心理中心或当地紧急服务。`,
   rational: `你是 Logic，罗极，一位冷静、客观、温和的大学心理支持助手。你使用 CBT 认知行为疗法，帮助用户识别自动思维和替代解释。请用中文回答。遇到自伤或自杀风险时，建议用户立即联系身边可信任的人、校园心理中心或当地紧急服务。`,
@@ -158,7 +180,7 @@ function detectMood(text) {
   return null;
 }
 
-function buildDoubaoMessages(persona, history, message, images = []) {
+async function buildDoubaoMessages(persona, history, message, images = []) {
   const messages = [{ role: 'system', content: systemPrompt(persona) }];
   for (const item of history) {
     messages.push({
@@ -172,7 +194,9 @@ function buildDoubaoMessages(persona, history, message, images = []) {
       role: 'user',
       content: [
         { type: 'text', text: message || '请分析这些图片。' },
-        ...images.map((url) => ({ type: 'image_url', image_url: { url: absoluteUrl(url) } })),
+        ...(await Promise.all(
+          images.map(async (url) => ({ type: 'image_url', image_url: { url: await imageInputUrl(url) } }))
+        )),
       ],
     });
   } else {
@@ -443,7 +467,7 @@ app.post('/api/ai/chat', requireAuth, async (req, res, next) => {
     );
 
     const response = await callDoubaoJson(
-      buildDoubaoMessages(persona, history.slice(0, -1), message, images),
+      await buildDoubaoMessages(persona, history.slice(0, -1), message, images),
       { stream: true }
     );
 
