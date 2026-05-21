@@ -1,138 +1,80 @@
 # Famlée 后台管理系统访问指南
 
-## 🔐 访问方式
+## 访问方式
 
-后台管理系统是**独立的 Web 页面**，与用户端完全隔离。
+后台管理系统通过 URL 参数进入：
 
-### 访问 URL
-
-在浏览器中访问以下地址进入管理端：
-
-```
+```text
 http://localhost:3000/?mode=admin
 ```
 
-或生产环境：
+生产环境：
 
-```
+```text
 https://your-domain.com/?mode=admin
 ```
 
-### 登录凭证
+## 登录凭证
 
-```
+```text
 账号: admin
 密码: 123456
 ```
 
----
+当前 Admin 登录是演示模式，token 保存在 `localStorage` 的 `famlee_admin_token`。
 
-## 📋 功能说明
+## 功能说明
 
-### 1. 数据统计面板
+### 数据统计面板
 
-- **时间维度切换**: 日/周/月三个维度
-- **核心指标卡片**: 总对话次数、各类心情占比
-- **数据可视化**:
-  - 📈 对话量趋势图（折线图）
-  - 🎯 心情分布饼图
-  - 📊 心情变化趋势对比（柱状图）
-- **AI 智能总结**: 各类心情趋势分析
+- 时间维度切换。
+- 总对话次数、情绪分布等指标卡片。
+- 对话趋势图、情绪分布图、时长分布图。
+- 当前数据主要来自 `src/data/mockAdminData.ts`。
 
-### 2. 活动发布面板
+### 活动发布面板
 
-- **发布新活动**: 填写活动信息并发布到校园心理布告栏
-- **已发布活动管理**: 查看和管理所有已发布活动
+- 发布校园心理活动。
+- 展示已发布活动列表和活动预览。
+- 当前仍以页面内状态 / mock 数据为主，尚未接入真实后端事件表。
 
----
+### 数据分析
 
-## 🎨 主题配置
+- 当前为占位/演示功能。
 
-后台管理系统使用了项目统一的 **tweakcn 主题**（`theme.md`），支持：
+## 技术实现
 
-- 🌈 oklch 颜色空间，提供更准确的色彩感知
-- 🌓 明暗主题切换（已配置变量）
-- 📱 响应式设计
+- UI 组件：shadcn/ui 风格组件。
+- 图表库：recharts。
+- 主题系统：`theme.md` 中的 tweakcn / oklch 配置。
+- 状态管理：React Hooks + localStorage。
+- 路由逻辑：`App.tsx` 读取 `?mode=admin`。
 
----
+## 当前限制
 
-## 🔒 安全说明
+- 未接入 Express 后端管理员认证。
+- 未使用真实 PostgreSQL 聚合数据。
+- 暂无管理员角色权限表。
+- 暂无活动增删改查 API。
 
-### 当前状态（演示模式）
+## 后续扩展方向
 
-- ✅ 前端登录验证
-- ✅ localStorage 会话保持
-- ⚠️ **未连接后端认证**
+- 在 Express API 中增加 admin-only middleware。
+- 新增管理员用户或角色权限表。
+- 用 PostgreSQL 聚合替换 `mockAdminData`。
+- 添加校园活动表和活动 CRUD API。
+- 添加 CSV/JSON 导出。
 
-### 生产环境建议
+## 开发
 
-如需部署到生产环境，请实现以下安全措施：
-
-1. **后端认证**:
-   - 使用 Supabase Auth 或其他认证服务
-   - 验证 JWT Token
-
-2. **角色权限**:
-   - 在 Supabase 中创建 `admin_users` 表
-   - 实现 RBAC（基于角色的访问控制）
-
-3. **API 保护**:
-   - 后端 API 验证管理员权限
-   - 使用 RLS（Row Level Security）
-
----
-
-## 🚀 开发模式
-
-启动开发服务器：
+需要同时启动 API 和前端：
 
 ```bash
+npm run server:dev
 npm run dev
 ```
 
-然后访问：
-- 用户端: `http://localhost:3000/`
-- 管理端: `http://localhost:3000/?mode=admin`
+访问：
 
----
-
-## 📦 构建部署
-
-```bash
-# 构建生产版本
-npm run build
-
-# 预览构建结果
-npm run preview
-```
-
----
-
-## 🔄 退出登录
-
-点击右上角的**退出登录**按钮，会自动返回用户端首页。
-
----
-
-## 📝 技术栈
-
-- **UI 组件**: shadcn-ui (Card, Button, Input, Tabs, Select 等)
-- **图表库**: recharts (折线图、饼图、柱状图)
-- **主题系统**: tweakcn + oklch 颜色空间
-- **状态管理**: React Hooks + localStorage
-- **路由逻辑**: URL 参数 `?mode=admin`
-
----
-
-## 🎯 后续扩展
-
-虽然当前使用模拟数据，但代码结构已为真实数据对接做好准备：
-
-1. **数据对接**: 将 `generateMockStats` 替换为 Supabase 查询
-2. **活动发布**: 连接 `campus_events` 表
-3. **实时更新**: 使用 Supabase Realtime 订阅
-4. **权限管理**: 实现多级管理员权限
-
----
-
-© 2025 Famlée - 心理健康支持平台
+- 用户端：`http://localhost:3000/`
+- 管理端：`http://localhost:3000/?mode=admin`
