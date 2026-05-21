@@ -1,5 +1,5 @@
 famlee.zdanny.cn {
-  reverse_proxy /api/* 127.0.0.1:8787
-  reverse_proxy /uploads/* 127.0.0.1:8787
-  reverse_proxy 127.0.0.1:8081
+  reverse_proxy /api/* famlee-api:8787
+  reverse_proxy /uploads/* famlee-api:8787
+  reverse_proxy famlee-web:80
 }
