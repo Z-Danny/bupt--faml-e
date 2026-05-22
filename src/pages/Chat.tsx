@@ -23,6 +23,7 @@ const mapDBMessageToLocal = (msg: ChatMessageDB): ChatMessage => ({
   id: msg.id,
   role: msg.role,
   text: msg.content,
+  images: msg.images,
   timestamp: new Date(msg.created_at),
 });
 
@@ -89,6 +90,21 @@ const CBT_STEPS = [
         field: "reframe"
     }
 ];
+
+const TOOL_SKILL_IDS: Record<string, string> = {
+  '正念呼吸': 'breathing',
+  '情绪接纳': 'act_acceptance',
+  '价值确认': 'values_clarification',
+  '捕捉负面想法': 'thought_record',
+  'CBT 引导': 'cbt_reframe',
+  '逆向思考': 'evidence_check',
+  '毒舌锐评': 'humor_buffer',
+  'MBTI 速测': 'personality_reflection',
+  '一键发疯': 'humor_buffer',
+};
+
+const getSkillIdForTool = (toolName: string): string | undefined =>
+  Object.entries(TOOL_SKILL_IDS).find(([label]) => toolName.includes(label))?.[1];
 
 export const ChatPage: React.FC<ChatProps> = ({
   setGlobalMood,
@@ -281,7 +297,12 @@ export const ChatPage: React.FC<ChatProps> = ({
   };
 
   // 发送消息（流式）
-  const handleSendMessage = async (textOverride?: string, images?: string[]) => {
+  const handleSendMessage = async (
+    textOverride?: string,
+    images?: string[],
+    skillId?: string,
+    toolName?: string
+  ) => {
     const textToSend = textOverride || inputValue;
     const imagesToSend = images || selectedImages;
 
@@ -361,7 +382,9 @@ export const ChatPage: React.FC<ChatProps> = ({
             setIsStreaming(false);
             setIsLoading(false);
           }
-        }
+        },
+        skillId,
+        toolName
       );
     } catch (error) {
       console.error('发送消息失败:', error);
@@ -404,7 +427,7 @@ export const ChatPage: React.FC<ChatProps> = ({
     // Default logic for other tools - 使用流式 API
     const prompt = `(用户点击了快捷工具) 请带领我进行"${toolName}"。请直接开始引导或互动。`;
     // 直接发送，handleSendMessage 会添加用户消息
-    handleSendMessage(prompt);
+    handleSendMessage(prompt, undefined, getSkillIdForTool(toolName), toolName);
   };
 
   const handleMBTISelection = (value: string) => {
@@ -417,7 +440,12 @@ export const ChatPage: React.FC<ChatProps> = ({
           // Finished
           const result = newAnswers.join('');
           setIsMBTIModalOpen(false);
-          handleSendMessage(`我的 MBTI 简易测试结果是：${result}。请根据这个结果，结合我的性格特点，给我一些有趣的分析或建议。`);
+          handleSendMessage(
+            `我的 MBTI 简易测试结果是：${result}。请根据这个结果，结合我的性格特点，给我一些有趣的分析或建议。`,
+            undefined,
+            'personality_reflection',
+            'MBTI 速测'
+          );
       }
   };
 
@@ -434,7 +462,7 @@ export const ChatPage: React.FC<ChatProps> = ({
           【重构思维】：${cbtData.reframe}
           
           请Logic老师对我的思维重构进行点评和鼓励。`;
-          handleSendMessage(summary);
+          handleSendMessage(summary, undefined, 'cbt_reframe', 'CBT 引导');
       }
   };
 

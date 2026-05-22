@@ -31,7 +31,9 @@ export const streamChat = async (
   isAudio?: boolean,
   audioData?: string,
   images?: string[],
-  onChunk?: (chunk: StreamChunk) => void
+  onChunk?: (chunk: StreamChunk) => void,
+  skillId?: string,
+  toolName?: string
 ): Promise<void> => {
   if (!message && (!images || images.length === 0)) throw new Error('message or images is required');
   if (!persona) throw new Error('persona is required');
@@ -51,6 +53,8 @@ export const streamChat = async (
       isAudio,
       audioData,
       images,
+      skillId,
+      toolName,
     }),
   });
 

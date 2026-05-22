@@ -38,6 +38,8 @@ export interface ChatMessageDB {
   role: 'user' | 'model';
   content: string;
   mood_detected?: string | null;
+  images?: string[];
+  metadata?: any;
   created_at: string;
 }
 

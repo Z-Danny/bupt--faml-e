@@ -97,6 +97,8 @@ export const sendMessageViaEdge = async (payload: {
   isAudio?: boolean;
   audioData?: string;
   images?: string[];
+  skillId?: string;
+  toolName?: string;
 }): Promise<ReadableStream<Uint8Array> | any> => {
   const token = getAuthToken();
   const response = await fetch(apiUrl('/ai/chat'), {

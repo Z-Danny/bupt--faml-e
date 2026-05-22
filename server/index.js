@@ -7,6 +7,7 @@ import cors from 'cors';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { pool, query } from './db.js';
+import { runSupportPipeline } from './ai/pipeline.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,6 +71,8 @@ function mapMessage(row) {
     role: row.role,
     content: row.content,
     mood_detected: row.mood_detected,
+    images: row.images ?? undefined,
+    metadata: row.metadata ?? undefined,
     created_at: row.created_at,
   };
 }
@@ -162,47 +165,12 @@ async function imageInputUrl(url) {
   return `data:${mimeForFilename(filePath)};base64,${buffer.toString('base64')}`;
 }
 
-const PERSONA_PROMPTS = {
-  healing: `你是 Melty，小融，一位温暖、富有同理心的大学心理支持助手。你使用 ACT 接纳承诺疗法的语言，帮助用户接纳情绪、找到可执行的小行动。请用中文回答。遇到自伤或自杀风险时，建议用户立即联系身边可信任的人、校园心理中心或当地紧急服务。`,
-  rational: `你是 Logic，罗极，一位冷静、客观、温和的大学心理支持助手。你使用 CBT 认知行为疗法，帮助用户识别自动思维和替代解释。请用中文回答。遇到自伤或自杀风险时，建议用户立即联系身边可信任的人、校园心理中心或当地紧急服务。`,
-  fun: `你是 Spark，火花，一位幽默、有活力但善良的大学心理支持助手。你可以用轻松的方式解构烦恼，但不要嘲讽用户。请用中文回答。遇到自伤或自杀风险时，建议用户立即联系身边可信任的人、校园心理中心或当地紧急服务。`,
-};
-
-function systemPrompt(persona) {
-  return PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.rational;
-}
-
 function detectMood(text) {
   if (/(开心|高兴|快乐|棒)/.test(text)) return 'HAPPY';
   if (/(焦虑|紧张|担心|害怕)/.test(text)) return 'ANXIOUS';
   if (/(难过|伤心|沮丧|崩溃)/.test(text)) return 'SAD';
   if (/(生气|愤怒|烦躁)/.test(text)) return 'ANGRY';
   return null;
-}
-
-async function buildDoubaoMessages(persona, history, message, images = []) {
-  const messages = [{ role: 'system', content: systemPrompt(persona) }];
-  for (const item of history) {
-    messages.push({
-      role: item.role === 'model' ? 'assistant' : 'user',
-      content: item.content,
-    });
-  }
-
-  if (images.length > 0) {
-    messages.push({
-      role: 'user',
-      content: [
-        { type: 'text', text: message || '请分析这些图片。' },
-        ...(await Promise.all(
-          images.map(async (url) => ({ type: 'image_url', image_url: { url: await imageInputUrl(url) } }))
-        )),
-      ],
-    });
-  } else {
-    messages.push({ role: 'user', content: message });
-  }
-  return messages;
 }
 
 async function callDoubaoJson(messages, options = {}) {
@@ -231,6 +199,77 @@ async function callDoubaoJson(messages, options = {}) {
   }
 
   return response;
+}
+
+async function loadRecentSupportContext(userId) {
+  const context = {
+    recentJournals: [],
+    recentEmotionEvents: [],
+  };
+
+  try {
+    const { rows } = await query(
+      `select content, summary, mood, created_at
+       from journals
+       where user_id = $1
+       order by created_at desc
+       limit 5`,
+      [userId]
+    );
+    context.recentJournals = rows;
+  } catch (error) {
+    console.warn('Failed to load recent journals for reflection context:', error.message);
+  }
+
+  try {
+    const { rows } = await query(
+      `select primary_emotion, emotion_tags, semantic_summary, risk_level, created_at
+       from emotion_events
+       where user_id = $1
+       order by created_at desc
+       limit 20`,
+      [userId]
+    );
+    context.recentEmotionEvents = rows;
+  } catch (error) {
+    console.warn('Failed to load recent emotion events for reflection context:', error.message);
+  }
+
+  return context;
+}
+
+async function recordEmotionEvent({ userId, source, sourceId, metadata }) {
+  try {
+    await query(
+      `insert into emotion_events
+       (user_id, source, source_id, primary_emotion, emotion_tags, semantic_summary, risk_level)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        userId,
+        source,
+        sourceId,
+        metadata?.emotion?.primary || null,
+        JSON.stringify(metadata?.emotion?.tags || []),
+        metadata?.emotion?.summary || null,
+        metadata?.safety?.level || null,
+      ]
+    );
+  } catch (error) {
+    console.warn('Failed to record emotion event:', error.message);
+  }
+}
+
+function writeSseHead(res, sessionId) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Session-Id': sessionId,
+  });
+}
+
+function sendSse(res, payload) {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
 app.get('/api/health', (_req, res) => {
@@ -436,7 +475,7 @@ app.post('/api/ai/summary', requireAuth, async (req, res, next) => {
 
 app.post('/api/ai/chat', requireAuth, async (req, res, next) => {
   try {
-    const { message, persona = 'rational', sessionId, images = [] } = req.body;
+    const { message, persona = 'rational', sessionId, images = [], skillId, toolName } = req.body;
     if (!message && images.length === 0) return res.status(400).json({ error: '消息不能为空' });
 
     let activeSessionId = sessionId;
@@ -456,36 +495,69 @@ app.post('/api/ai/chat', requireAuth, async (req, res, next) => {
       activeSessionId = rows[0].id;
     }
 
-    await query(
-      'insert into chat_messages (session_id, role, content, images) values ($1, $2, $3, $4)',
-      [activeSessionId, 'user', message || '[图片]', images.length ? JSON.stringify(images) : null]
-    );
-
     const { rows: history } = await query(
       'select role, content from chat_messages where session_id = $1 order by created_at asc limit 20',
       [activeSessionId]
     );
 
+    const supportContext = await loadRecentSupportContext(req.user.id);
+    const pipelineResult = await runSupportPipeline({
+      persona,
+      message,
+      images,
+      history,
+      explicitSkillId: skillId,
+      explicitToolName: toolName,
+      recentJournals: supportContext.recentJournals,
+      recentEmotionEvents: supportContext.recentEmotionEvents,
+      buildImageInputUrl: imageInputUrl,
+    });
+
+    const metadata = pipelineResult.metadata;
+    const { rows: insertedUserMessages } = await query(
+      `insert into chat_messages (session_id, role, content, mood_detected, images, metadata)
+       values ($1, $2, $3, $4, $5, $6)
+       returning id`,
+      [
+        activeSessionId,
+        'user',
+        message || '[图片]',
+        metadata?.emotion?.primary || detectMood(message || ''),
+        images.length ? JSON.stringify(images) : null,
+        JSON.stringify(metadata),
+      ]
+    );
+    await recordEmotionEvent({
+      userId: req.user.id,
+      source: 'chat',
+      sourceId: insertedUserMessages[0]?.id,
+      metadata,
+    });
+
+    if (pipelineResult.directResponse) {
+      const fullText = pipelineResult.directResponse;
+      writeSseHead(res, activeSessionId);
+      sendSse(res, { content: fullText, done: false, sessionId: activeSessionId, metadata });
+      await query(
+        'insert into chat_messages (session_id, role, content, mood_detected, metadata) values ($1, $2, $3, $4, $5)',
+        [activeSessionId, 'model', fullText, metadata?.emotion?.primary || detectMood(fullText), JSON.stringify(metadata)]
+      );
+      sendSse(res, { content: '', done: true, sessionId: activeSessionId, metadata });
+      res.end();
+      return;
+    }
+
     const response = await callDoubaoJson(
-      await buildDoubaoMessages(persona, history.slice(0, -1), message, images),
+      pipelineResult.messages,
       { stream: true }
     );
 
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Session-Id': activeSessionId,
-    });
+    writeSseHead(res, activeSessionId);
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let fullText = '';
-
-    const send = (payload) => {
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
-    };
 
     const handleLine = (line) => {
       const trimmed = line.trim();
@@ -497,7 +569,7 @@ app.post('/api/ai/chat', requireAuth, async (req, res, next) => {
         const delta = parsed?.choices?.[0]?.delta?.content || '';
         if (delta) {
           fullText += delta;
-          send({ content: delta, done: false, sessionId: activeSessionId });
+          sendSse(res, { content: delta, done: false, sessionId: activeSessionId, metadata });
         }
       } catch {
         // Ignore malformed provider chunks.
@@ -517,12 +589,12 @@ app.post('/api/ai/chat', requireAuth, async (req, res, next) => {
 
     if (fullText) {
       await query(
-        'insert into chat_messages (session_id, role, content, mood_detected) values ($1, $2, $3, $4)',
-        [activeSessionId, 'model', fullText, detectMood(fullText)]
+        'insert into chat_messages (session_id, role, content, mood_detected, metadata) values ($1, $2, $3, $4, $5)',
+        [activeSessionId, 'model', fullText, detectMood(fullText), JSON.stringify(metadata)]
       );
     }
 
-    send({ content: '', done: true, sessionId: activeSessionId });
+    sendSse(res, { content: '', done: true, sessionId: activeSessionId, metadata });
     res.end();
   } catch (error) {
     next(error);
